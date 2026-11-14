@@ -1,0 +1,108 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\CondicionAlumno;
+use App\Models\EstadoInscripcion;
+use App\Models\InscripcionMesa;
+use App\Models\Materia;
+use App\Models\MesaExamen;
+use App\Models\Persona;
+use App\Models\TurnoExamen;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\View\View;
+
+class MesaExamenController extends Controller
+{
+    public function index(Request $request): View
+    {
+        $alumno = Auth::user()->persona;
+        $turnos = TurnoExamen::orderBy('id_turno')->get();
+        $turnoId = (int) $request->query('turno', $turnos->firstWhere('nombre_turno', 'Turno Julio')?->id_turno ?? $turnos->first()?->id_turno);
+
+        // Mismo criterio que "Mis cuotas": tiene que estar al día hasta el
+        // mes actual (no alcanza con no deber nada de antes) — sin importar
+        // si esas cuotas llegaron a generarse.
+        $mesesAdeudados = $alumno->mesesAdeudados();
+        $cuotasEstado = $mesesAdeudados->isEmpty() ? 'al_dia' : 'debe';
+
+        $mesas = MesaExamen::with('materia.nombreMateria', 'estadoMesa', 'turnoExamen', 'llamadoExamen')
+            ->where('id_turno', $turnoId)
+            ->whereHas('estadoMesa', fn ($q) => $q->where('nombre_estado', 'Programada'))
+            ->orderBy('fecha_examen')
+            ->get()
+            ->map(function (MesaExamen $mesa) use ($alumno) {
+                $mesa->bloqueo = $this->materiaSinCursar($mesa->materia, $alumno) ?? $mesa->materia->correlativaFaltante($alumno);
+                $mesa->ya_inscripto = InscripcionMesa::where('id_mesa', $mesa->id_mesa)
+                    ->where('id_persona_alumno', $alumno->id_persona)
+                    ->exists();
+
+                return $mesa;
+            });
+
+        return view('mesas-examen.index', [
+            'mesas' => $mesas,
+            'turno' => $turnoId,
+            'turnos' => $turnos,
+            'cuotasEstado' => $cuotasEstado,
+            'mesesAdeudados' => $mesesAdeudados,
+        ]);
+    }
+
+    public function inscribir(Request $request, MesaExamen $mesa): RedirectResponse
+    {
+        $alumno = Auth::user()->persona;
+
+        if ($this->materiaSinCursar($mesa->materia, $alumno)) {
+            return back()->withErrors(['mesa' => 'No estás en condiciones de rendir esta materia: todavía no la cursaste o no estás regularizado.']);
+        }
+
+        if ($mesa->materia->correlativaFaltante($alumno)) {
+            return back()->withErrors(['mesa' => 'No cumplís las correlativas necesarias para esta mesa.']);
+        }
+
+        if ($alumno->superaLimiteDeuda()) {
+            return back()->withErrors(['mesa' => 'Tenés ' . Persona::MESES_MAXIMOS_DEUDA_PARA_INSCRIBIRSE . ' cuotas o más sin pagar. Consultá con secretaría.']);
+        }
+
+        $yaInscripto = InscripcionMesa::where('id_mesa', $mesa->id_mesa)
+            ->where('id_persona_alumno', $alumno->id_persona)
+            ->exists();
+
+        if (! $yaInscripto && $mesa->cupo_maximo !== null) {
+            $inscriptosActivos = $mesa->inscripciones()
+                ->whereHas('estadoInscripcion', fn ($q) => $q->whereIn('nombre_estado', ['Aceptado', 'En proceso']))
+                ->count();
+
+            if ($inscriptosActivos >= $mesa->cupo_maximo) {
+                return back()->withErrors(['mesa' => 'La mesa alcanzó su cupo máximo de inscriptos.']);
+            }
+        }
+
+        $estadoEnProceso = EstadoInscripcion::where('nombre_estado', 'En proceso')->firstOrFail();
+
+        InscripcionMesa::firstOrCreate(
+            ['id_mesa' => $mesa->id_mesa, 'id_persona_alumno' => $alumno->id_persona],
+            ['fecha_inscripcion' => now(), 'id_estado_inscripcion' => $estadoEnProceso->id_estado_inscripcion]
+        );
+
+        return redirect()->route('inscripciones.index')
+            ->with('status', 'Tu inscripción a ' . $mesa->materia->nombre . ' quedó registrada y pendiente de aprobación.');
+    }
+
+    /**
+     * Devuelve la propia materia si el alumno todavía no la cursó/regularizó
+     * (o su regularidad venció), o null si está en condiciones de rendirla.
+     */
+    private function materiaSinCursar(Materia $materia, Persona $alumno): ?Materia
+    {
+        $historial = $materia->historialDe($alumno);
+        $condicionNombre = $historial?->condicion?->nombre_condicion;
+        $puedeRendir = CondicionAlumno::esAprobada($condicionNombre)
+            || ($condicionNombre === 'Regular' && ! ($historial?->regularidad_vencida ?? false));
+
+        return $puedeRendir ? null : $materia;
+    }
+}

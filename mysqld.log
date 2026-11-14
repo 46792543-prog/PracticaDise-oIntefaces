@@ -1,0 +1,8 @@
+2026-11-11T21:56:23.479707Z 0 [Warning] [MY-010097] [Server] Insecure configuration for --secure-file-priv: Current value does not restrict location of generated files. Consider setting it to a valid, non-empty path.
+2026-11-11T21:56:23.534675Z 0 [Warning] [MY-010918] [Server] 'default_authentication_plugin' is deprecated and will be removed in a future release. Please use authentication_policy instead.
+2026-11-11T21:56:23.535234Z 0 [System] [MY-010116] [Server] C:\laragon\bin\mysql\mysql-8.0.30-winx64\bin\mysqld.exe (mysqld 8.0.30) starting as process 3808
+2026-11-11T21:56:23.660585Z 0 [Warning] [MY-010091] [Server] Can't create test file C:\laragon\data\mysql\mysqld_tmp_file_case_insensitive_test.lower-test
+2026-11-11T21:56:23.660749Z 0 [Warning] [MY-010091] [Server] Can't create test file C:\laragon\data\mysql\mysqld_tmp_file_case_insensitive_test.lower-test
+2026-11-11T21:56:23.694954Z 0 [ERROR] [MY-013276] [Server] Failed to set datadir to 'C:\laragon\data\mysql\' (OS errno: 2 - No such file or directory)
+2026-11-11T21:56:23.698903Z 0 [ERROR] [MY-010119] [Server] Aborting
+2026-11-11T21:56:23.742511Z 0 [System] [MY-010910] [Server] C:\laragon\bin\mysql\mysql-8.0.30-winx64\bin\mysqld.exe: Shutdown complete (mysqld 8.0.30)  MySQL Community Server - GPL.

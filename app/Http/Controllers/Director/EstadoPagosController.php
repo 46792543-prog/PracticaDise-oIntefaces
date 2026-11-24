@@ -17,7 +17,15 @@ class EstadoPagosController extends Controller
         $totalAlumnos = Persona::whereHas('usuario.rol', fn ($q) => $q->where('nombre_rol', 'Alumno'))->count();
         $alumnosConDeuda = CuotaAlumno::where('pagado', false)->distinct('id_persona_alumno')->count('id_persona_alumno');
         $alumnosAlDia = max(0, $totalAlumnos - $alumnosConDeuda);
-        $montoAdeudadoTotal = (float) (CuotaAlumno::where('pagado', false)->selectRaw('SUM(monto + recargo) as total')->value('total') ?? 0);
+        // Se calcula en PHP (no con SQL agregado) para reusar exactamente la
+        // misma lógica de descuento que el resto del sistema (CuotaAlumno::
+        // montoTotal() + Persona::porcentajeDescuentoCuotas(), que depende de
+        // si el hermano vinculado sigue activo) y no duplicarla en una
+        // expresión SQL aparte que se podría desincronizar.
+        $montoAdeudadoTotal = (float) CuotaAlumno::where('pagado', false)
+            ->with('personaAlumno.hermanos.inscripcionesCarrera.estadoInscripcion')
+            ->get()
+            ->sum(fn (CuotaAlumno $c) => $c->montoTotal($c->personaAlumno->porcentajeDescuentoCuotas()));
         $cuotasVencidas = CuotaAlumno::where('pagado', false)
             ->whereNotNull('fecha_vencimiento')
             ->where('fecha_vencimiento', '<', now())
@@ -57,6 +65,7 @@ class EstadoPagosController extends Controller
             ->when($carreraId, fn ($q) => $q->whereHas('inscripcionesCarrera', fn ($w) => $w->where('id_carrera', $carreraId)))
             ->with([
                 'inscripcionesCarrera' => fn ($q) => $q->latest('fecha_inscripcion')->with('carrera'),
+                'hermanos.inscripcionesCarrera.estadoInscripcion',
                 'cuotas' => fn ($q) => $q->with('mes', 'anioLectivo', 'movimientoCaja.medioPago')->orderBy('id_anio_lectivo')->orderBy('id_mes'),
             ])
             ->withCount([

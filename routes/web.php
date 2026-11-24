@@ -125,10 +125,13 @@ Route::prefix('admin')->name('admin.')->middleware(['auth', 'staff'])->group(fun
     Route::put('/alumnos/historial/cargar/{historial}', [HistorialPrevioController::class, 'update'])->name('alumnos.historial-previo.update');
     Route::delete('/alumnos/historial/cargar/{historial}', [HistorialPrevioController::class, 'destroy'])->name('alumnos.historial-previo.destroy');
     Route::get('/alumnos/{persona}', [AlumnoController::class, 'show'])->name('alumnos.show');
+    Route::post('/alumnos/{persona}/hermanos', [AlumnoController::class, 'vincularHermano'])->name('alumnos.hermanos.store');
+    Route::delete('/alumnos/{persona}/hermanos/{hermano}', [AlumnoController::class, 'desvincularHermano'])->name('alumnos.hermanos.destroy');
     Route::put('/alumnos/{persona}/baja', [AlumnoController::class, 'baja'])->name('alumnos.baja');
     Route::put('/alumnos/{persona}/alta', [AlumnoController::class, 'alta'])->name('alumnos.alta');
     Route::put('/alumnos/{persona}/promover', [AlumnoController::class, 'promoverAnio'])->name('alumnos.promover');
     Route::put('/alumnos/{persona}/historial/{historial}/plazo', [AlumnoController::class, 'actualizarPlazoRegularidad'])->name('alumnos.historial.plazo');
+    Route::put('/alumnos/{persona}/beneficios', [AlumnoController::class, 'actualizarBeneficios'])->name('alumnos.beneficios');
     Route::get('/alumnos/{persona}/materias', [AlumnoController::class, 'materias'])->name('alumnos.materias');
     Route::post('/alumnos/{persona}/materias', [AlumnoController::class, 'materiasStore'])->name('alumnos.materias.store');
     Route::put('/alumnos/{persona}/historial/{historial}/condicion', [AlumnoController::class, 'actualizarCondicionHistorial'])->name('alumnos.historial.condicion');

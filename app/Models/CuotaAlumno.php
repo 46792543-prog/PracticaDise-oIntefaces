@@ -33,9 +33,34 @@ class CuotaAlumno extends Model
         'fecha_pago' => 'date',
     ];
 
-    public function montoTotal(): float
+    /**
+     * Descuento por beneficios (promo + beca) sobre el monto base de la
+     * cuota. Solo aplica mientras esté pendiente: una vez cobrada, el monto
+     * guardado ya quedó "congelado" neto (ver CuotaController::cobrar()).
+     */
+    public function montoDescuento(?float $porcentajeBeneficios = null): float
     {
-        return (float) bcadd((string) $this->monto, (string) $this->recargo, 2);
+        if ($this->pagado) {
+            return 0.0;
+        }
+
+        $porcentaje = $porcentajeBeneficios ?? $this->personaAlumno->porcentajeDescuentoCuotas();
+
+        if ($porcentaje <= 0) {
+            return 0.0;
+        }
+
+        return (float) bcdiv(bcmul((string) $this->monto, (string) $porcentaje, 4), '100', 2);
+    }
+
+    public function montoNeto(?float $porcentajeBeneficios = null): float
+    {
+        return (float) bcsub((string) $this->monto, (string) $this->montoDescuento($porcentajeBeneficios), 2);
+    }
+
+    public function montoTotal(?float $porcentajeBeneficios = null): float
+    {
+        return (float) bcadd((string) $this->montoNeto($porcentajeBeneficios), (string) $this->recargo, 2);
     }
 
     public function getVencidaAttribute(): bool

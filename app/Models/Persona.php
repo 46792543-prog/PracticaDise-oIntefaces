@@ -19,10 +19,13 @@ class Persona extends Model
 
     protected $fillable = [
         'dni', 'fecha_nacimiento', 'nombre', 'apellido', 'telefono', 'direccion', 'localidad',
+        'porcentaje_promo', 'porcentaje_beca',
     ];
 
     protected $casts = [
         'fecha_nacimiento' => 'date',
+        'porcentaje_promo' => 'decimal:2',
+        'porcentaje_beca' => 'decimal:2',
     ];
 
     public function usuario()
@@ -56,6 +59,16 @@ class Persona extends Model
     }
 
     /**
+     * Vínculo "hermano/a" con otros alumnos — simétrico (se guarda en ambas
+     * direcciones al vincular, ver AlumnoController::vincularHermano()).
+     * Permite varios hermanos por alumno.
+     */
+    public function hermanos()
+    {
+        return $this->belongsToMany(Persona::class, 'hermano_alumno', 'id_persona', 'id_persona_hermano');
+    }
+
+    /**
      * True si para ese año lectivo no hay matrícula generada (no se bloquea,
      * nunca se configuró) o si la que hay ya está pagada. False solo cuando
      * existe una matrícula generada y sigue impaga — ahí es cuando se
@@ -66,6 +79,47 @@ class Persona extends Model
         $matricula = $this->matriculas()->where('id_anio_lectivo', $idAnioLectivo)->first();
 
         return ! $matricula || $matricula->pagado;
+    }
+
+    /**
+     * True si al menos uno de los hermanos vinculados tiene una inscripción
+     * a carrera activa. La promo depende de esto: si el hermano se da de
+     * baja, deja de contar y la promo se cae sola sin que nadie la edite.
+     */
+    public function tieneHermanoActivo(): bool
+    {
+        return $this->hermanos->contains(
+            fn (Persona $hermano) => $hermano->inscripcionesCarrera->contains(
+                fn (InscripcionCarrera $i) => $i->estadoInscripcion?->nombre_estado === 'Activo'
+            )
+        );
+    }
+
+    /**
+     * % total de descuento sobre cuotas mensuales (promo por hermanos + beca),
+     * sumados y con tope de 100% para que el neto nunca sea negativo. La
+     * promo solo cuenta si hay un hermano vinculado y activo (ver
+     * tieneHermanoActivo()); la beca es siempre el valor cargado a mano.
+     */
+    public function porcentajeDescuentoCuotas(): float
+    {
+        $porcentajePromo = $this->tieneHermanoActivo() ? (float) $this->porcentaje_promo : 0.0;
+
+        return min(100.0, $porcentajePromo + (float) $this->porcentaje_beca);
+    }
+
+    /**
+     * Total de descuento (promo+beca) acumulado sobre las cuotas pendientes
+     * del alumno. Usa la relación cuotas() ya cargada si está eager-loadeada,
+     * para no disparar queries extra.
+     */
+    public function descuentoPendienteCuotas(): float
+    {
+        $porcentaje = $this->porcentajeDescuentoCuotas();
+
+        return (float) $this->cuotas
+            ->where('pagado', false)
+            ->sum(fn (CuotaAlumno $cuota) => $cuota->montoDescuento($porcentaje));
     }
 
     public function inscripcionesMesa()

@@ -33,6 +33,7 @@ class CuotaController extends Controller
             $alumnoSeleccionado = Usuario::alumnos()
                 ->with([
                     'persona.inscripcionesCarrera.carrera',
+                    'persona.hermanos.inscripcionesCarrera.estadoInscripcion',
                     'persona.cuotas' => fn ($q) => $q->with('mes')->orderBy('id_anio_lectivo')->orderBy('id_mes'),
                 ])
                 ->find($request->query('alumno'));
@@ -75,6 +76,7 @@ class CuotaController extends Controller
             'busqueda' => $busqueda,
             'resultados' => $resultados,
             'alumnoSeleccionado' => $alumnoSeleccionado,
+            'porcentajeDescuentoCuotas' => $alumnoSeleccionado ? $alumnoSeleccionado->persona->porcentajeDescuentoCuotas() : null,
             'estadoMensual' => $alumnoSeleccionado ? $alumnoSeleccionado->persona->estadoMensualCuotas() : collect(),
             'primerMesSinGenerar' => $alumnoSeleccionado ? $alumnoSeleccionado->persona->mesesSinCuotaGenerada()->first() : null,
             'historial' => $historial,
@@ -229,6 +231,9 @@ class CuotaController extends Controller
                 ['id_tipo_movimiento' => $tipoIngreso->id_tipo_movimiento]
             );
 
+            $alumno = Persona::with('hermanos.inscripcionesCarrera.estadoInscripcion')->find($data['persona_id']);
+            $porcentajeDescuento = $alumno?->porcentajeDescuentoCuotas() ?? 0.0;
+
             foreach ($seleccionadas as $cuotaId => $item) {
                 $cuota = CuotaAlumno::where('id_persona_alumno', $data['persona_id'])
                     ->where('pagado', false)
@@ -238,7 +243,13 @@ class CuotaController extends Controller
                     continue;
                 }
 
-                $monto = round((float) ($item['monto'] ?? $cuota->monto), 2);
+                $montoBase = round((float) ($item['monto'] ?? $cuota->monto), 2);
+                // El descuento (promo/beca) nunca sale del formulario: siempre
+                // se calcula a partir del % vigente en la ficha del alumno al
+                // momento de cobrar, igual criterio que ya se usa con el
+                // recargo por mora.
+                $descuento = $porcentajeDescuento > 0 ? round($montoBase * $porcentajeDescuento / 100, 2) : 0.0;
+                $montoNeto = round($montoBase - $descuento, 2);
                 // El recargo nunca sale del formulario: siempre es el que ya
                 // tiene calculado la cuota (desde Configuración de Cuotas /
                 // "Calcular moras"), para que no se pueda alterar al cobrar.
@@ -246,13 +257,16 @@ class CuotaController extends Controller
                 $conceptoTexto = $cuota->concepto ?: "Cuota {$cuota->mes->nombre_mes}";
 
                 $descripcion = "{$conceptoTexto} — {$cuota->personaAlumno->apellido}, {$cuota->personaAlumno->nombre}";
+                if ($descuento > 0) {
+                    $descripcion .= ' (incluye descuento $' . number_format($descuento, 0, ',', '.') . ')';
+                }
                 if ($recargo > 0) {
                     $descripcion .= ' (incluye recargo $' . number_format($recargo, 0, ',', '.') . ')';
                 }
 
                 $movimiento = MovimientoCaja::create([
                     'id_concepto' => $conceptoCuota->id_concepto,
-                    'monto' => $monto + $recargo,
+                    'monto' => $montoNeto + $recargo,
                     'fecha_movimiento' => $data['fecha_pago'],
                     'descripcion_detalle' => $descripcion,
                     'id_secretario_registra' => Auth::user()->id_persona,
@@ -260,14 +274,14 @@ class CuotaController extends Controller
                 ]);
 
                 $cuota->update([
-                    'monto' => $monto,
+                    'monto' => $montoNeto,
                     'recargo' => $recargo,
                     'pagado' => true,
                     'fecha_pago' => $data['fecha_pago'],
                     'id_movimiento_caja' => $movimiento->id_movimiento,
                 ]);
 
-                $totalCobrado += $monto + $recargo;
+                $totalCobrado += $montoNeto + $recargo;
                 $cantidad++;
             }
         });

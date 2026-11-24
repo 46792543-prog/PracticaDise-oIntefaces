@@ -64,7 +64,15 @@
                         <div class="flex items-center gap-3">
                             <span class="sg-avatar sg-avatar--marca !h-12 !w-12 !rounded-2xl">{{ mb_substr($alumnoSeleccionado->nombre, 0, 1) }}{{ mb_substr($alumnoSeleccionado->apellido, 0, 1) }}</span>
                             <div>
-                            <p class="font-display font-bold text-slate-900">{{ $alumnoSeleccionado->apellido }}, {{ $alumnoSeleccionado->nombre }}</p>
+                            <p class="font-display font-bold text-slate-900 flex items-center gap-2 flex-wrap">
+                                {{ $alumnoSeleccionado->apellido }}, {{ $alumnoSeleccionado->nombre }}
+                                @if ($alumnoSeleccionado->persona->porcentaje_promo > 0 && $alumnoSeleccionado->persona->tieneHermanoActivo())
+                                    <span class="sg-badge sg-badge--verde sg-badge--chico">Promo {{ rtrim(rtrim(number_format($alumnoSeleccionado->persona->porcentaje_promo, 2), '0'), '.') }}%</span>
+                                @endif
+                                @if ($alumnoSeleccionado->persona->porcentaje_beca > 0)
+                                    <span class="sg-badge sg-badge--verde sg-badge--chico">Beca {{ rtrim(rtrim(number_format($alumnoSeleccionado->persona->porcentaje_beca, 2), '0'), '.') }}%</span>
+                                @endif
+                            </p>
                             <p class="text-xs text-slate-400">DNI {{ $alumnoSeleccionado->dni }} · {{ $alumnoSeleccionado->persona->inscripcionesCarrera->first()?->carrera?->nombre_carrera }}</p>
                             </div>
                         </div>
@@ -265,13 +273,22 @@
                                             </form>
                                         </div>
                                     </div>
-                                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mt-3">
+                                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
                                         <div>
                                             <label class="sg-label">Monto</label>
                                             <div class="flex items-center gap-1">
                                                 <span class="text-slate-400 text-sm">$</span>
                                                 <input type="number" step="0.01" min="0.01" form="form-cobrar-cuotas" name="cuotas[{{ $cuota->id_cuota }}][monto]" value="{{ $cuota->monto }}"
                                                        class="sg-input sg-input--chico cuota-monto w-full" data-id="{{ $cuota->id_cuota }}">
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label class="sg-label !text-emerald-600">Descuento</label>
+                                            <div class="flex items-center gap-1">
+                                                <span class="text-slate-400 text-sm">$</span>
+                                                <input type="number" step="0.01" min="0" value="{{ $cuota->montoDescuento($porcentajeDescuentoCuotas) }}"
+                                                       readonly title="Se calcula solo a partir del % de promo/beca del alumno — no se edita acá."
+                                                       class="sg-input sg-input--chico cuota-descuento w-full border-emerald-200 bg-slate-50 text-slate-500 cursor-not-allowed" data-id="{{ $cuota->id_cuota }}" data-porcentaje="{{ $porcentajeDescuentoCuotas }}">
                                             </div>
                                         </div>
                                         <div>
@@ -286,7 +303,7 @@
                                         <div class="col-span-2 sm:col-span-1">
                                             <label class="sg-label">Subtotal</label>
                                             <p class="cuota-subtotal font-display font-bold text-[#0B3D91] text-base py-1" data-id="{{ $cuota->id_cuota }}">
-                                                $ {{ number_format($cuota->montoTotal(), 0, ',', '.') }}
+                                                $ {{ number_format($cuota->montoTotal($porcentajeDescuentoCuotas), 0, ',', '.') }}
                                             </p>
                                         </div>
                                     </div>
@@ -337,7 +354,7 @@
 
                         <div class="flex items-center justify-between rounded-2xl bg-gradient-to-r from-[#0B3D91] to-[#1565C0] text-white px-5 py-4 mb-4 shadow-lg shadow-blue-900/20">
                             <span class="font-semibold text-blue-100 text-sm flex items-center gap-2"><x-sg.icono nombre="banknotes" /> Total a registrar</span>
-                            <span id="total-cobro" class="font-display font-extrabold text-2xl text-[#FFD54F]">$ {{ number_format($cuotasPendientes->sum(fn ($c) => $c->montoTotal()), 0, ',', '.') }}</span>
+                            <span id="total-cobro" class="font-display font-extrabold text-2xl text-[#FFD54F]">$ {{ number_format($cuotasPendientes->sum(fn ($c) => $c->montoTotal($porcentajeDescuentoCuotas)), 0, ',', '.') }}</span>
                         </div>
 
                         <p class="sg-aviso sg-aviso--exito mb-4 text-xs">
@@ -352,8 +369,12 @@
                         <script>
                             function recalcularCuota(id) {
                                 const monto = parseFloat(document.querySelector(`.cuota-monto[data-id="${id}"]`).value) || 0;
+                                const descuentoInput = document.querySelector(`.cuota-descuento[data-id="${id}"]`);
+                                const porcentajeDescuento = parseFloat(descuentoInput.dataset.porcentaje) || 0;
+                                const descuento = Math.round(monto * porcentajeDescuento) / 100;
+                                descuentoInput.value = descuento.toFixed(2);
                                 const recargo = parseFloat(document.querySelector(`.cuota-recargo[data-id="${id}"]`).value) || 0;
-                                document.querySelector(`.cuota-subtotal[data-id="${id}"]`).textContent = '$ ' + (monto + recargo).toLocaleString('es-AR');
+                                document.querySelector(`.cuota-subtotal[data-id="${id}"]`).textContent = '$ ' + (monto - descuento + recargo).toLocaleString('es-AR');
                                 recalcularTotal();
                             }
                             function recalcularTotal() {
@@ -361,8 +382,9 @@
                                 document.querySelectorAll('.cuota-check:checked').forEach(cb => {
                                     const id = cb.dataset.id;
                                     const monto = parseFloat(document.querySelector(`.cuota-monto[data-id="${id}"]`).value) || 0;
+                                    const descuento = parseFloat(document.querySelector(`.cuota-descuento[data-id="${id}"]`).value) || 0;
                                     const recargo = parseFloat(document.querySelector(`.cuota-recargo[data-id="${id}"]`).value) || 0;
-                                    total += monto + recargo;
+                                    total += monto - descuento + recargo;
                                 });
                                 document.getElementById('total-cobro').textContent = '$ ' + total.toLocaleString('es-AR');
                             }

@@ -81,6 +81,20 @@
                 <div class="flex justify-between gap-3"><dt class="text-slate-400 flex items-center gap-2"><x-sg.icono nombre="calendar" class="h-4 w-4" /> Nacimiento</dt><dd class="text-slate-700 font-medium">{{ \App\Support\FechaEsp::corta($alumno->fecha_nacimiento) }}</dd></div>
                 <div class="flex justify-between gap-3"><dt class="text-slate-400 flex items-center gap-2"><x-sg.icono nombre="map" class="h-4 w-4" /> Localidad</dt><dd class="text-slate-700 font-medium">{{ $alumno->localidad ?? '—' }}</dd></div>
             </dl>
+            <form method="POST" action="{{ route('admin.alumnos.beneficios', $alumno) }}" class="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-dashed border-slate-200">
+                @csrf @method('PUT')
+                <div>
+                    <label class="text-xs font-semibold text-slate-400" title="Solo se aplica si tiene un hermano/a vinculado y activo (ver abajo)">% Promo (hermanos)</label>
+                    <input type="number" step="0.01" min="0" max="100" name="porcentaje_promo" value="{{ old('porcentaje_promo', $alumno->porcentaje_promo) }}" class="sg-input sg-input--chico w-full mt-1">
+                </div>
+                <div>
+                    <label class="text-xs font-semibold text-slate-400">% Beca</label>
+                    <input type="number" step="0.01" min="0" max="100" name="porcentaje_beca" value="{{ old('porcentaje_beca', $alumno->porcentaje_beca) }}" class="sg-input sg-input--chico w-full mt-1">
+                </div>
+                <div class="col-span-2 flex justify-end">
+                    <button type="submit" class="sg-btn sg-btn--azul sg-btn--chico">Guardar beneficios</button>
+                </div>
+            </form>
         </div>
         <div class="sg-card p-5">
             <div class="flex items-center gap-3 mb-4">
@@ -126,10 +140,91 @@
         </div>
     </div>
 
+    <div class="sg-card sg-revelar p-5 mb-6">
+        <div class="flex items-center justify-between gap-3 mb-4 flex-wrap">
+            <div class="flex items-center gap-3">
+                <span class="sg-chip sg-chip--chico sg-chip--verde"><x-sg.icono nombre="users" /></span>
+                <div>
+                    <h3 class="font-display font-bold text-slate-800 text-sm">Hermanos vinculados</h3>
+                    <p class="text-xs text-slate-400">La promo del alumno se aplica solo mientras el hermano/a vinculado esté activo</p>
+                </div>
+            </div>
+            @if ($alumno->porcentaje_promo > 0 && ! $alumno->tieneHermanoActivo())
+                <span class="sg-badge sg-badge--amarillo">% promo cargado pero sin aplicar: no hay hermano activo vinculado</span>
+            @endif
+        </div>
+
+        @if ($alumno->hermanos->isNotEmpty())
+            <div class="grid sm:grid-cols-2 gap-2 mb-4">
+                @foreach ($alumno->hermanos as $hermano)
+                    @php $estadoHermano = $hermano->inscripcionesCarrera->first()?->estadoInscripcion?->nombre_estado; @endphp
+                    <div class="flex items-center justify-between gap-3 rounded-2xl border-[1.5px] border-slate-100 px-4 py-3">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <span class="sg-avatar">{{ mb_substr($hermano->nombre, 0, 1) }}{{ mb_substr($hermano->apellido, 0, 1) }}</span>
+                            <div class="min-w-0">
+                                <p class="font-semibold text-slate-700 text-sm truncate">{{ $hermano->apellido }}, {{ $hermano->nombre }}</p>
+                                <p class="text-xs text-slate-400">DNI {{ $hermano->dni }}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            @if ($estadoHermano === 'Activo')
+                                <span class="sg-badge sg-badge--verde">Activo</span>
+                            @else
+                                <span class="sg-badge sg-badge--rojo">{{ $estadoHermano ?? 'Sin inscripción' }}</span>
+                            @endif
+                            <form method="POST" action="{{ route('admin.alumnos.hermanos.destroy', [$alumno, $hermano]) }}" onsubmit="return confirm('¿Quitar el vínculo de hermano/a?');">
+                                @csrf @method('DELETE')
+                                <button type="submit" class="h-8 w-8 grid place-items-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600 transition-colors" title="Quitar vínculo"><x-sg.icono nombre="trash" class="h-4 w-4" /></button>
+                            </form>
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        @else
+            <p class="text-sm text-slate-400 mb-4">Todavía no tiene hermanos vinculados.</p>
+        @endif
+
+        <form method="GET" action="{{ route('admin.alumnos.show', $alumno) }}" class="grid sm:grid-cols-[1fr_auto] gap-3">
+            <div class="sg-campo-icono">
+                <x-sg.icono nombre="search" />
+                <input type="text" name="q_hermano" value="{{ $busquedaHermano }}" placeholder="Buscar alumno por nombre, apellido o DNI..." maxlength="20"
+                       oninput="this.value = this.value.replace(/[^A-Za-zÁÉÍÓÚÑÜáéíóúñü0-9\s]/g, '')"
+                       class="sg-input w-full">
+            </div>
+            <button class="sg-btn sg-btn--azul"><x-sg.icono nombre="search" /> Buscar</button>
+        </form>
+
+        @if ($busquedaHermano)
+            @if ($resultadosHermano->isNotEmpty())
+                <div class="grid sm:grid-cols-2 gap-2 mt-3">
+                    @foreach ($resultadosHermano as $candidato)
+                        <div class="flex items-center justify-between gap-3 rounded-2xl border-[1.5px] border-slate-100 px-4 py-3">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <span class="sg-avatar">{{ mb_substr($candidato->nombre, 0, 1) }}{{ mb_substr($candidato->apellido, 0, 1) }}</span>
+                                <div class="min-w-0">
+                                    <p class="font-semibold text-slate-700 text-sm truncate">{{ $candidato->apellido }}, {{ $candidato->nombre }}</p>
+                                    <p class="text-xs text-slate-400">DNI {{ $candidato->dni }} · {{ $candidato->inscripcionesCarrera->first()?->carrera?->nombre_carrera }}</p>
+                                </div>
+                            </div>
+                            <form method="POST" action="{{ route('admin.alumnos.hermanos.store', $alumno) }}">
+                                @csrf
+                                <input type="hidden" name="id_persona_hermano" value="{{ $candidato->id_persona }}">
+                                <button type="submit" class="sg-btn sg-btn--verde sg-btn--chico shrink-0">Vincular</button>
+                            </form>
+                        </div>
+                    @endforeach
+                </div>
+            @else
+                <p class="sg-aviso sg-aviso--info mt-3">No se encontraron alumnos que coincidan con "{{ $busquedaHermano }}".</p>
+            @endif
+        @endif
+    </div>
+
     @php
         $cuotasOrdenadas = $alumno->cuotas->sortBy([['id_anio_lectivo', 'asc'], ['id_mes', 'asc']]);
         $cuotasAdeudadasCount = $cuotasOrdenadas->where('pagado', false)->count();
         $totalEstimadoAdeudado = $montoActualCuota ? $cuotasAdeudadasCount * (float) $montoActualCuota : null;
+        $porcentajeDescuentoCuotas = $alumno->porcentajeDescuentoCuotas();
     @endphp
 
     <x-sg.tarjeta titulo="Historial de Cuotas" subtitulo="Todas las cuotas generadas para este alumno, pagadas y pendientes" icono="banknotes" tono="verde" class="mb-6" :cuerpo="false">
@@ -146,6 +241,7 @@
                         <th>Período</th>
                         <th>Concepto</th>
                         <th>Monto</th>
+                        <th>Descuento</th>
                         <th>Recargo</th>
                         <th>Total</th>
                         <th>Estado</th>
@@ -159,13 +255,20 @@
                             <td class="text-slate-500">{{ $cuota->concepto ?: '—' }}</td>
                             <td class="font-medium text-slate-700">$ {{ number_format($cuota->monto, 0, ',', '.') }}</td>
                             <td>
+                                @if ($cuota->montoDescuento($porcentajeDescuentoCuotas) > 0)
+                                    <span class="sg-badge sg-badge--verde sg-badge--sin-punto">-$ {{ number_format($cuota->montoDescuento($porcentajeDescuentoCuotas), 0, ',', '.') }}</span>
+                                @else
+                                    <span class="text-slate-300">—</span>
+                                @endif
+                            </td>
+                            <td>
                                 @if ($cuota->recargo > 0)
                                     <span class="sg-badge sg-badge--amarillo sg-badge--sin-punto">+$ {{ number_format($cuota->recargo, 0, ',', '.') }}</span>
                                 @else
                                     <span class="text-slate-300">—</span>
                                 @endif
                             </td>
-                            <td class="font-display font-bold text-[#0B3D91]">$ {{ number_format($cuota->montoTotal(), 0, ',', '.') }}</td>
+                            <td class="font-display font-bold text-[#0B3D91]">$ {{ number_format($cuota->montoTotal($porcentajeDescuentoCuotas), 0, ',', '.') }}</td>
                             <td>
                                 @if ($cuota->pagado)
                                     <span class="sg-badge sg-badge--verde">Pagada</span>
@@ -178,7 +281,7 @@
                             <td class="text-slate-500">{{ $cuota->fecha_pago ? \App\Support\FechaEsp::corta($cuota->fecha_pago) : '—' }}</td>
                         </tr>
                     @empty
-                        <tr><td colspan="7"><x-sg.vacio icono="banknotes">Todavía no se generó ninguna cuota para este alumno.</x-sg.vacio></td></tr>
+                        <tr><td colspan="8"><x-sg.vacio icono="banknotes">Todavía no se generó ninguna cuota para este alumno.</x-sg.vacio></td></tr>
                     @endforelse
                 </tbody>
             </table>

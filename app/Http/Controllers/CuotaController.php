@@ -10,6 +10,7 @@ class CuotaController extends Controller
     public function index(): View
     {
         $alumno = Auth::user()->persona;
+        $alumno->load('hermanos.inscripcionesCarrera.estadoInscripcion');
 
         $cuotas = $alumno->cuotas()->with(['anioLectivo', 'mes'])
             ->orderBy('id_anio_lectivo')
@@ -37,6 +38,7 @@ class CuotaController extends Controller
             'mesesAdeudados' => $mesesAdeudados,
             'totalPagado' => $totalPagado,
             'cantidadPagadas' => $pagadas->count(),
+            'porcentajeDescuentoCuotas' => $alumno->porcentajeDescuentoCuotas(),
         ]);
     }
 }

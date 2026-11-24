@@ -7,6 +7,12 @@
     <div class="bg-white rounded-xl shadow-sm p-6">
         <p class="text-sm font-semibold text-slate-600 mb-4">Año lectivo {{ $anioLectivo }}</p>
 
+        @if ($porcentajeDescuentoCuotas > 0)
+            <p class="text-xs font-semibold text-emerald-700 bg-emerald-50 rounded-lg px-3 py-2 mb-4 inline-block">
+                🎉 Tenés un {{ rtrim(rtrim(number_format($porcentajeDescuentoCuotas, 2), '0'), '.') }}% de descuento aplicado en tus cuotas (promo/beca).
+            </p>
+        @endif
+
         <div class="grid sm:grid-cols-3 gap-4 mb-6">
             <div class="bg-slate-50 rounded-xl p-4">
                 <p class="text-xs font-semibold text-slate-400 uppercase">✅ Estado actual</p>
@@ -28,7 +34,7 @@
                 </p>
                 <p class="text-xs text-slate-400 mt-1">
                     @if ($proximaCuota)
-                        {{ $proximaCuota->fecha_vencimiento ? 'Vence ' . \App\Support\FechaEsp::corta($proximaCuota->fecha_vencimiento) . ' · ' : '' }}$ {{ number_format($proximaCuota->monto, 0, ',', '.') }}
+                        {{ $proximaCuota->fecha_vencimiento ? 'Vence ' . \App\Support\FechaEsp::corta($proximaCuota->fecha_vencimiento) . ' · ' : '' }}$ {{ number_format($proximaCuota->montoNeto($porcentajeDescuentoCuotas), 0, ',', '.') }}
                     @else
                         No tenés cuotas pendientes
                     @endif
@@ -67,8 +73,13 @@
                             </p>
                         </div>
                     </div>
-                    <span class="font-bold text-sm {{ $cuota->pagado ? 'text-green-600' : 'text-slate-700' }}">
-                        $ {{ number_format($cuota->monto, 0, ',', '.') }}
+                    <span class="text-right">
+                        @if ($cuota->montoDescuento($porcentajeDescuentoCuotas) > 0)
+                            <span class="block text-xs text-slate-400 line-through">$ {{ number_format($cuota->monto, 0, ',', '.') }}</span>
+                        @endif
+                        <span class="font-bold text-sm {{ $cuota->pagado ? 'text-green-600' : 'text-slate-700' }}">
+                            $ {{ number_format($cuota->montoNeto($porcentajeDescuentoCuotas), 0, ',', '.') }}
+                        </span>
                     </span>
                 </div>
             @endforeach

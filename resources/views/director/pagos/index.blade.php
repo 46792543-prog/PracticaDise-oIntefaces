@@ -75,14 +75,15 @@
             <tbody class="sg-filas">
                 @forelse ($alumnos as $alumno)
                     @php
-                        $adeudado = (float) ($alumno->monto_pendiente ?? 0) + (float) ($alumno->recargo_pendiente ?? 0);
+                        $porcentajeDescuentoAlumno = $alumno->porcentajeDescuentoCuotas();
+                        $adeudado = (float) ($alumno->monto_pendiente ?? 0) - $alumno->descuentoPendienteCuotas() + (float) ($alumno->recargo_pendiente ?? 0);
                         $historialPagos = [
                             'alumno' => "{$alumno->apellido}, {$alumno->nombre}",
                             'dni' => $alumno->dni,
                             'cuotas' => $alumno->cuotas->map(fn ($c) => [
                                 'periodo' => ($c->mes->nombre_mes ?? '—') . ' ' . ($c->anioLectivo->anio ?? ''),
                                 'concepto' => $c->concepto ?: 'Cuota mensual',
-                                'total' => '$ ' . number_format($c->montoTotal(), 0, ',', '.'),
+                                'total' => '$ ' . number_format($c->montoTotal($porcentajeDescuentoAlumno), 0, ',', '.'),
                                 'recargo' => (float) $c->recargo > 0 ? '$ ' . number_format($c->recargo, 0, ',', '.') : null,
                                 'vencimiento' => $c->fecha_vencimiento ? \App\Support\FechaEsp::corta($c->fecha_vencimiento) : '—',
                                 'pagado' => (bool) $c->pagado,

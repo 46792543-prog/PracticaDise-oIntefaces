@@ -21,13 +21,13 @@
             @csrf
             <div>
                 <label class="sg-label">Nombre Oficial de la Carrera *</label>
-                <input type="text" maxlength="40" name="nombre_carrera" value="{{ old('nombre_carrera') }}" required placeholder="Ej. Tecnicatura Superior en Desarrollo de Software"
+                <input type="text" maxlength="50" name="nombre_carrera" value="{{ old('nombre_carrera') }}" required placeholder="Ej. Tecnicatura Superior en Desarrollo de Software"
                        oninput="this.value = this.value.replace(/[^A-Za-zÁÉÍÓÚÑÜáéíóúñü\s]/g, '')"
                        class="sg-input w-full">
             </div>
             <div>
                 <label class="sg-label">Familia Profesional</label>
-                <input type="text" maxlength="20" name="familia_profesional" value="{{ old('familia_profesional') }}" placeholder="Ej. Salud"
+                <input type="text" maxlength="100" name="familia_profesional" value="{{ old('familia_profesional') }}" placeholder="Ej. Salud"
                        oninput="this.value = this.value.replace(/[^A-Za-zÁÉÍÓÚÑÜáéíóúñü\s]/g, '')"
                        class="sg-input w-full">
             </div>

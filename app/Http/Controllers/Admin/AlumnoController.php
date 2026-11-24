@@ -98,7 +98,7 @@ class AlumnoController extends Controller
         ]);
     }
 
-    public function show(Persona $persona): View
+    public function show(Request $request, Persona $persona): View
     {
         $persona->load([
             'usuario',
@@ -113,7 +113,25 @@ class AlumnoController extends Controller
             'cuotas.mes',
             'cuotas.anioLectivo',
             'documentacion.documentoRequisito',
+            'hermanos.inscripcionesCarrera.estadoInscripcion',
         ]);
+
+        $busquedaHermano = trim((string) $request->query('q_hermano'));
+        $resultadosHermano = collect();
+
+        if ($busquedaHermano) {
+            $idsVinculados = $persona->hermanos->pluck('id_persona')->push($persona->id_persona);
+
+            $resultadosHermano = Persona::whereHas('usuario.rol', fn ($q) => $q->where('nombre_rol', 'Alumno'))
+                ->whereNotIn('id_persona', $idsVinculados)
+                ->where(fn ($q) => $q->where('nombre', 'like', "%{$busquedaHermano}%")
+                    ->orWhere('apellido', 'like', "%{$busquedaHermano}%")
+                    ->orWhere('dni', 'like', "%{$busquedaHermano}%"))
+                ->with('inscripcionesCarrera.carrera')
+                ->orderBy('apellido')
+                ->take(8)
+                ->get();
+        }
 
         $fichaSecciones = FichaSeccion::where('activo', true)
             ->with(['campos' => fn ($q) => $q->where('activo', true)])
@@ -159,7 +177,33 @@ class AlumnoController extends Controller
             'materiasAprobadasTotal' => $materiasAprobadasTotal,
             'porcentajeAvance' => $porcentajeAvance,
             'montoActualCuota' => $montoActualCuota,
+            'busquedaHermano' => $busquedaHermano,
+            'resultadosHermano' => $resultadosHermano,
         ]);
+    }
+
+    public function vincularHermano(Request $request, Persona $persona): RedirectResponse
+    {
+        $data = $request->validate([
+            'id_persona_hermano' => ['required', 'integer', 'exists:persona,id_persona', Rule::notIn([$persona->id_persona])],
+        ], [
+            'id_persona_hermano.not_in' => 'Un alumno no puede ser hermano de sí mismo.',
+        ]);
+
+        $hermano = Persona::findOrFail($data['id_persona_hermano']);
+
+        $persona->hermanos()->syncWithoutDetaching([$hermano->id_persona]);
+        $hermano->hermanos()->syncWithoutDetaching([$persona->id_persona]);
+
+        return back()->with('status', "Se vinculó a {$hermano->apellido}, {$hermano->nombre} como hermano/a. La promo se aplica mientras ambos estén activos.");
+    }
+
+    public function desvincularHermano(Request $request, Persona $persona, Persona $hermano): RedirectResponse
+    {
+        $persona->hermanos()->detach($hermano->id_persona);
+        $hermano->hermanos()->detach($persona->id_persona);
+
+        return back()->with('status', 'Se quitó el vínculo de hermano/a.');
     }
 
     public function create(): View
@@ -345,6 +389,24 @@ class AlumnoController extends Controller
         $progreso['inscripcion']->update(['id_anio_cursada' => $progreso['proximoAnio']->id_anio_cursada]);
 
         return back()->with('status', "Se promovió a {$persona->nombre} {$persona->apellido} a {$progreso['proximoAnio']->nombre_anio}.");
+    }
+
+    public function actualizarBeneficios(Request $request, Persona $persona): RedirectResponse
+    {
+        $data = $request->validate([
+            'porcentaje_promo' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'porcentaje_beca' => ['nullable', 'numeric', 'min:0', 'max:100'],
+        ], [
+            'porcentaje_promo.max' => 'El % de promo no puede superar el 100%.',
+            'porcentaje_beca.max' => 'El % de beca no puede superar el 100%.',
+        ]);
+
+        $persona->update([
+            'porcentaje_promo' => round((float) ($data['porcentaje_promo'] ?? 0), 2),
+            'porcentaje_beca' => round((float) ($data['porcentaje_beca'] ?? 0), 2),
+        ]);
+
+        return back()->with('status', 'Se actualizaron los beneficios del alumno. Se aplican a las cuotas mensuales pendientes.');
     }
 
     public function actualizarPlazoRegularidad(Request $request, Persona $persona, HistorialAlumno $historial): RedirectResponse
